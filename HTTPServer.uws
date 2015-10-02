@@ -1,0 +1,178 @@
+r = Dialog.Run(PARAM_STR)
+exitexit r
+
+module Dialog
+    function Run(param[])
+        result = 0
+        with HTTPServer
+            port = .DEFAULT_PORT
+            if length(param) then
+                port = val(param[0], .DEFAULT_PORT)
+            endif
+
+            .Init()
+            listner = .StartListner(port)
+
+            stop = FALSE
+            repeat
+                receiver = .Receiver(listner)
+                msg = .GetMessage(receiver)
+                if pos("<#CR>", msg) then
+                    // Invoke-UwscFunction
+                    try
+                        PoshVar[i] = RunFunction(msg)
+                        error = ""
+                    except
+                        error = TRY_ERRMSG
+                    endtry
+                    .SendMessage(receiver, error + chr(9) + "PoshVar[" + i + "]" + chr(9) + PoshVar[i])
+                    i = i + 1
+                else
+                    select msg
+                        case "exit", "exitexit"
+                            stop = TRUE
+                            .SendMessage(receiver, "")
+                        default
+                            .SendMessage(receiver, "送信成功 " + msg)
+                    selend
+                endif
+                .CloseReceiver(receiver)
+            until stop
+
+            .CloseListner(listner)
+            .Dispose()
+        endwith
+    fend
+    status(id, ST_CLASS)
+
+    hashtbl PoshVar
+    dim i = 0
+
+    function RunFunction(command)
+        sa = split(command, "<#CR>")
+        func = sa[0]
+        args = join(sa, ", ", FALSE, 1)
+        result = eval(func + "(" + args + ")" )
+    fend
+
+    function GetAllStatus(id)
+        result = ""
+        for st in split("ST_TITLE ST_CLASS ST_X ST_Y ST_WIDTH ST_HEIGHT ST_CLX ST_CLY ST_CLWIDTH ST_CLHEIGHT ST_PARENT ST_ICON ST_MAXIMIZED ST_VISIBLE ST_ACTIVE ST_BUSY ST_ISID ST_WIN64 ST_PATH ST_PROCESS ST_MONITOR")
+            result = result + st + chr(4) + status(id, eval(st)) + chr(5)
+        next
+    fend
+    
+endmodule
+
+
+
+
+module HTTPServer
+    const DEFAULT_PORT = 57913
+    dim ipaddress
+
+    procedure HTTPServer
+        ipaddress = inet_addr("127.0.0.1")
+    fend
+    
+    function Init()
+        dim lpWSAData
+        result = ! WSAStartup($202, lpWSAData)
+    fend
+    
+    function Dispose()
+        result = ! WSACleanup()
+    fend
+
+    function StartListner(port = DEFAULT_PORT)
+        if port <> DEFAULT_PORT then
+            port = val(port, DEFAULT_PORT)
+        endif
+
+        result = 0
+        error = FALSE
+        try
+            result = socket(AF_INET, SOCK_STREAM, 0)
+            if ! result then
+                error = TRUE
+                exit
+            endif
+
+            if bind(result, AF_INET, htons(port), ipaddress, sin_zero, SOCKADDR_LENGTH) = -1 then
+                error = TRUE
+                exit
+            endif
+
+            if listen(result, SOMAXCONN) = -1 then
+                error = TRUE
+                exit
+            endif
+
+        finally
+            if error then
+                if result then closesocket(result)
+            endif
+        endtry
+    fend
+    
+    function CloseListner(ListnerSocket)
+        result = ! closesocket(ListnerSocket)
+        result = 0
+    fend
+    
+
+    function Receiver(ListnerSocket)
+        dim sockaddr, len = SOCKADDR_LENGTH
+        result = accept(ListnerSocket, sockaddr, len)
+    fend
+
+    function GetMessage(ReceiverSocket, bufferSize = 1024)
+        buffer = format(chr(0), bufferSize)
+        ret = recv(ReceiverSocket, buffer, bufferSize, 0)
+        result = betweenstr(buffer, "<#CR><#CR>")
+    fend
+    
+    
+    function SendMessage(ReceiverSocket, msg)
+        response = replace(template, "%msg%", msg)
+        response = replace(response, "%len%", lengthb(msg))
+        result = ! send(ReceiverSocket, response, lengthb(response), 0)
+    fend
+    
+    textblock template
+HTTP/1.1 200 OK
+Content-Length: %len%
+Content-Type: text/html
+
+%msg%
+
+    endtextblock
+
+    function CloseReceiver(ReceiverSocket)
+        result = ! closesocket(ReceiverSocket)
+    fend
+    
+
+    const sin_zero        = format(chr(0), 8)
+    const SOCKADDR_LENGTH = 16 //sockaddr構造体サイズ
+    const AF_INET         = 2
+    const SOCK_STREAM     = 1  //TCP
+    const SOMAXCONN       = 128
+    
+    def_dll socket(Long, Long, Long):dword:ws2_32.dll
+    def_dll setsockopt(dword, Long, Long, var char, Long):Long:ws2_32.dll
+    def_dll bind(dword, {word, word, long, string}, long):long:ws2_32.dll
+    def_dll listen(dword, Long):Long:ws2_32.dll
+    def_dll accept(dword, var long, var long):long:ws2_32.dll
+    def_dll recv(dword, var string, Long, Long):Long:ws2_32.dll
+    def_dll send(dword, string, Long, Long):Long:ws2_32.dll
+    def_dll closesocket(dword):long:ws2_32.dll
+
+    def_dll WSAStartup(word, var dword):Long:ws2_32.dll
+    def_dll WSACleanup():Long:ws2_32.dll
+    
+    def_dll inet_addr(String):dword:ws2_32.dll
+    def_dll htonl(dword): dword:ws2_32.dll
+    def_dll htons(word):word:ws2_32.dll
+
+endmodule
