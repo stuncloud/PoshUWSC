@@ -17,25 +17,25 @@ module Dialog
             repeat
                 receiver = .Receiver(listner)
                 msg = .GetMessage(receiver)
-                if pos("<#CR>", msg) then
-                    // Invoke-UwscFunction
-                    try
-                        PoshVar[i] = RunFunction(msg)
-                        error = ""
-                    except
-                        error = TRY_ERRMSG
-                    endtry
-                    .SendMessage(receiver, error + chr(9) + "PoshVar[" + i + "]" + chr(9) + PoshVar[i])
-                    i = i + 1
-                else
-                    select msg
-                        case "exit", "exitexit"
-                            stop = TRUE
-                            .SendMessage(receiver, "")
-                        default
-                            .SendMessage(receiver, "送信成功 " + msg)
-                    selend
-                endif
+                select msg
+                    case "exit", "exitexit"
+                        stop = TRUE
+                        .SendMessage(receiver, "")
+                    default
+                        try
+                            if pos("<#CR>", msg) then
+                                // Invoke-UwscFunction
+                                PoshVar[i] = RunFunction(msg)
+                            else
+                                PoshVar[i] = RunStatement(msg)
+                            endif
+                            error = ""
+                        except
+                            error = TRY_ERRMSG
+                        endtry
+                        .SendMessage(receiver, error + chr(9) + "PoshVar[" + i + "]" + chr(9) + PoshVar[i])
+                        i = i + 1
+                selend
                 .CloseReceiver(receiver)
             until stop
 
@@ -54,6 +54,11 @@ module Dialog
         args = join(sa, ", ", FALSE, 1)
         result = eval(func + "(" + args + ")" )
     fend
+
+    function RunStatement(command)
+        result = eval(command)
+    fend
+    
 
     function GetAllStatus(id)
         result = ""

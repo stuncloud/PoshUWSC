@@ -46,7 +46,7 @@ UWSCモジュールの各種関数
 .OUTPUTS
 なし
 .EXAMPLE
-Start-Uwsc
+Stop-Uwsc
 #>
 function Stop-Uwsc
 {
@@ -139,7 +139,7 @@ UWSCの関数を実行する
 .INPUTS
 なし
 .OUTPUTS
-[string]
+string
 .EXAMPLE
 Invoke-UwscFunction -Function clkitem -Arguments $Id,'OK'
 #>
@@ -160,13 +160,45 @@ function Invoke-UwscFunction
         Write-Warning 'UWSCが停止しています'
         return
     }
-    $command = $Function
-    if ($Arguments)
+    $response = send-command "$($Function)`r`n$($Arguments -join "`r`n")"
+    return uwscresult $response
+}
+
+<#
+.SYNOPSIS
+UWSCで式を実行する
+.DESCRIPTION
+UWSCで式を実行する
+.INPUTS
+なし
+.OUTPUTS
+string
+.EXAMPLE
+Invoke-UwscStatement '1 + 2 * 3'
+#>
+function Invoke-UwscStatement
+{
+    [CmdletBinding()]
+    param
+    (
+        # 式
+        [parameter(Mandatory,Position=0)]
+        [string] $Statement
+    )
+    if ($(Get-UwscState).State -ne 'Running')
     {
-        $command += "`r`n$($Arguments -join "`r`n")"
+        Write-Warning 'UWSCが停止しています'
+        return
     }
-    $response = send-command $command
-    $arr = $response -split $([char] 9)
+    $response = send-command $Statement
+    return uwscresult $response
+}
+
+function uwscresult
+{
+    [CmdletBinding()]
+    param($var)
+    $arr = $var -split $([char] 9)
     return New-Object psobject -Property @{
         Error    = $arr[0]
         Variable = $arr[1]
